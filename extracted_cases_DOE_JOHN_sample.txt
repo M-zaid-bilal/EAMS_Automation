@@ -1,0 +1,7 @@
+EAMS CASE RETRIEVAL REPORT (LIVE PROGRESS SAVE)
+Target profile: JOHN DOE
+DOB context: [REDACTED]
+----------------------------------------
+Discovered Case Identifiers (2 total):
+[1] ADJ00000001
+[2] ADJ00000002
