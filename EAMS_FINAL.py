@@ -436,7 +436,7 @@ class EAMSScraper:
         if nav_status == "RELOADED":
             print("Rate limit reloaded to grid, retrying entry...")
             self.page.wait_for_timeout(2000)
-            return total
+            return -1  # sentinel: 429 landed back on grid — retry same index, do NOT advance
         
         if not self._handle_detail_page_extraction(index, total):
             return None
@@ -551,7 +551,11 @@ class EAMSScraper:
                 if result is None:
                     print("Search lost, stopping loop.")
                     break
+                elif result == -1:
+                    # 429 reloaded back to grid — retry same index, do NOT advance i
+                    continue
                 elif result != results_count:
+                    # Session recovery returned a new grid count — update and retry same i
                     results_count = result
                     continue
                 else:
