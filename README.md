@@ -6,211 +6,434 @@ Automates case identifier retrieval from California's EAMS (Electronic Adjudicat
 
 ---
 
-## The Problem
+# The Problem
 
 Medical lien management firms spend hours every day on a repetitive task:
+
 - Search California's EAMS portal for client names
 - Click through result pages one by one
 - Manually copy ADJ (case) numbers
 - Save results to spreadsheets
 
-**At scale:** 50–60 records per day × 5 hours per person = significant overhead.
+At scale:
 
-## The Solution
+> 50–60 records per day × 5 hours per person = significant overhead.
 
-A single-file executable that processes batches of 100+ records automatically:
+---
 
-✅ Reads patient records from CSV  
-✅ Searches EAMS portal for each record  
-✅ Extracts all associated ADJ numbers  
-✅ Saves results live (crash-safe)  
-✅ Handles rate limiting and session drops silently  
+# The Solution
+
+A single-file executable that processes batches of **100+ records automatically**:
+
+- ✅ Reads patient records and advanced optional search/detail filters from CSV
+- ✅ Searches EAMS portal for each record automatically
+- ✅ Gracefully handles multi-grid results using fuzzy-matching filters
+- ✅ Extracts all associated and matched ADJ numbers
+- ✅ Saves results live (crash-safe & real-time write-outs)
+- ✅ Handles rate limiting (HTTP 429) and session drops silently
 
 No Python install required. No IT tickets. Just run the `.exe`.
 
 ---
 
-## Quick Start
+# Download
 
-### 1. Prepare Your CSV
+The fully packaged standalone executable is ready to run out of the box with zero dependencies (Chromium is bundled inside!).
 
+🚀 **Download the Latest Release**  
+`EAMS_Automation_v1.0.2.exe`
+
+---
+
+# Quick Start
+
+## 1. Prepare Your CSV
+
+Column header names are highly flexible. The parser strips punctuation, spaces, and casing. You can supply simple inputs or use advanced filters.
+
+```csv
+First Name,Last Name,DOB,employerfilter,injurydatefilter,cityfilter
+Rafael,Chavez,02/20/1981,,,
+John,Doe,,Boston Scientific,2019,Los Angeles
+Jane,Smith,03/22/1990,,01/01/2018,
 ```
-First Name,Last Name,DOB
-John,Doe,01/15/1985
-Jane,Smith,03/22/1990
+
+### Required columns
+
+- First Name
+- Last Name
+- DOB
+
+(DOB may be empty, but the column must exist.)
+
+### Optional columns
+
+- employerfilter
+- injurydatefilter
+- cityfilter
+- zipfilter
+
+---
+
+## 2. Run the Executable
+
+Place the downloaded executable and your CSV file in the same directory.
+
+```text
+EAMS_Automation_v1.0.2.exe
 ```
 
-DOB is optional. Column header names are flexible (firstname, first_name, First Name all work).
+Double-click the executable.
 
-### 2. Run the Executable
+Choose:
 
-Place `EAMS_FINAL.exe` and your CSV file in the same directory. Double-click the `.exe`.
-
-Choose **Mode 2** (Batch CSV) and enter your filename.
-
-### 3. Review Results
-
-Each record gets its own output file:
-
+```text
+Mode 2 (Batch CSV)
 ```
-extracted_cases_DOE_JOHN_it_8.txt
 
+Enter your filename:
+
+```text
+SAMPLE_PATIENT.csv
+```
+
+---
+
+## 3. Review Results
+
+Each record gets its own live progress save file.
+
+Example:
+
+```text
+extracted_cases_Chavez_Rafael_it_15.txt
+```
+
+Example output:
+
+```text
 EAMS CASE RETRIEVAL REPORT (LIVE PROGRESS SAVE)
-Target profile: JOHN DOE
-DOB context: 01/15/1985
+
+Target profile: Rafael Chavez
+DOB context: 02/20/1981
+Active filters: InjuryDate~'2019'
+
 ----------------------------------------
-Discovered Case Identifiers (5 total):
-[1] ADJ19193456
-[2] ADJ19193475
-[3] ADJ19193489
-[4] ADJ19193868
-[5] ADJ19352897
+
+Discovered Case Identifiers (2 total):
+
+[1] ADJ12738574
+[2] ADJ15602252
 ```
 
 ---
 
-## How It Works
+# Core Features & Intelligence
 
-### Run Modes
+## 1. Result Filter Engine (Fuzzy Matching)
 
-**Mode 1: Single Record**  
-Enter one first name, last name, and optional DOB for a one-off lookup.
+To navigate complex search results with high-volume rows, the script applies targeted refinements.
 
-**Mode 2: Batch CSV**  
-Load a CSV file with multiple records and process all of them sequentially without further input.
+### Fuzzy Employer Match
 
-### Rate Limiting & Resilience
+Resolves spelling variations and layout disparities.
 
-The EAMS portal enforces aggressive rate limiting (HTTP 429). This pipeline handles it automatically:
+Examples:
 
-- **Exponential backoff** — wait intervals double on repeated throttles (5s → 10s → 20s)
-- **Session recovery** — detects when the portal kicks you back to login and re-authenticates silently
-- **Index-based retry** — if a click fails, it retries the same record, never skips
-- **Live progress saves** — each completed record is written to disk immediately
+```text
+Boston Scientific Corp
+```
 
-If something goes wrong mid-run, your data is safe. Resume by re-running the same CSV.
+matches
 
-### DOB Intelligence (v1.0.1)
+```text
+Corp of Boston Scientific
+```
 
-If a search returns 0 results, the pipeline automatically retries up to 3 times **without** DOB:
+using tokenized overlap while ignoring common stopwords:
 
-- Each retry includes a 10-second pause
-- Full re-authentication between attempts
-- Prevents false negatives from malformed DOB data
+- LLC
+- Inc
+- Co
+- The
 
-### Memory Stability (v1.0.1)
+### Smart Injury Date Match
 
-Real-time memory monitoring with automatic garbage collection:
+Handles:
 
-- Warnings at 1GB and 2GB thresholds
-- Page reload between records
-- Tested stable at 1000+ records
-- Typical usage: <100MB
+- Single year matches (`2019`)
+- Exact dates (`12/30/2008`)
+- Continuous Trauma (CT) ranges
 
----
+Example:
 
-## Scaling to Multiple Agents
+```text
+01/01/2019 - 03/05/2021
+```
 
-No shared server, no database, no coordination needed.
-
-Split your records into separate CSV files and assign one agent per file:
-
-| Agent | CSV | Records |
-|-------|-----|---------|
-| Agent 1 | batch1.csv | 1–100 |
-| Agent 2 | batch2.csv | 101–200 |
-| Agent 3 | batch3.csv | 201–300 |
-
-All three run simultaneously. 300 records in ~30 minutes (same time as 100).
-
-Why this scales cleanly:
-- Each agent runs fully independently
-- One agent crashing doesn't affect others
-- Crash-safe design means at most one record is lost, never the whole batch
-- Zero setup — just `.exe` + CSV
+If a filter year falls within a CT boundary range, the row is accepted automatically.
 
 ---
 
-## Technical Stack
+## 2. Interactive CLI Refinement
 
-- **Python 3** — core automation logic
-- **Playwright** — browser automation (non-headless; you see the browser during execution)
-- **PyInstaller** — single-file `.exe` with bundled Chromium (no external dependencies)
-- **CSV / Regex** — input parsing and ADJ number extraction
-- **psutil** — memory monitoring
+If a batch run encounters multiple matching records and no DOB or filters were supplied, the script pauses and offers refinement options.
+
+Available prompts:
+
+```text
+Enter DOB
+Enter Employer Filter
+Enter Injury Date Filter
+Enter City
+Enter ZIP Code
+```
+
+Or simply press:
+
+```text
+[ENTER]
+```
+
+to crawl and scrape all detected rows.
 
 ---
 
-## Build from Source
+## 3. Rate Limiting & Resilience
+
+The EAMS portal enforces aggressive rate limiting (`HTTP 429`).
+
+The pipeline automatically handles this through:
+
+### Exponential Backoff
+
+Automatically pauses and retries:
+
+```text
+5s → 10s → 20s
+```
+
+before refreshing.
+
+### Session Recovery
+
+Detects logouts and:
+
+- Returns to the secure gateway
+- Re-authenticates
+- Restores the active search
+
+### Live Progress Saves
+
+Writes extraction results immediately so crashes never destroy previous work.
+
+---
+
+## 4. DOB Automatic Fallback
+
+If searching with a DOB returns zero results, the engine automatically retries.
+
+Process:
+
+1. Clear DOB
+2. Re-authenticate if required
+3. Retry search
+
+Up to:
+
+```text
+3 attempts
+```
+
+This handles situations where DOB data in EAMS is incomplete or inconsistent.
+
+---
+
+## 5. Memory Stability Engine
+
+Because PyInstaller builds run in a persistent browser session, memory usage is actively monitored.
+
+Features:
+
+- Regular RSS RAM monitoring
+- CLI memory diagnostics
+- Automatic garbage collection
+
+Triggers:
+
+```text
+1 GB warning threshold
+2 GB emergency threshold
+```
+
+using:
+
+```python
+gc.collect()
+```
+
+Typical runtime memory usage remains:
+
+```text
+< 100 MB
+```
+
+---
+
+# Deployment & Multi-Agent Scaling
+
+To run multiple extraction jobs simultaneously, split records across separate CSV files.
+
+| Agent | Target CSV | Range | Execution |
+|---------|---------|---------|---------|
+| Agent 1 | batch_1.csv | Records 1–100 | Running locally |
+| Agent 2 | batch_2.csv | Records 101–200 | Running locally |
+| Agent 3 | batch_3.csv | Records 201–300 | Running locally |
+
+Because each instance maintains independent local state:
+
+- No database locks
+- No coordination overhead
+- No network race conditions
+
+---
+
+# Build From Source
+
+Compile the script into a completely self-contained executable with Playwright Chromium bundled.
+
+## 1. Configure the Environment
+
+### Windows Command Prompt
+
+```cmd
+set PLAYWRIGHT_BROWSERS_PATH=0
+```
+
+### Windows PowerShell
+
+```powershell
+$env:PLAYWRIGHT_BROWSERS_PATH=0
+```
+
+### macOS / Linux
+
+```bash
+export PLAYWRIGHT_BROWSERS_PATH=0
+```
+
+---
+
+## 2. Install Packages & Browser Bundle
 
 ```bash
 pip install -r requirements.txt
 playwright install chromium
-pyinstaller --onefile --name EAMS_Automation_v1.0.1 EAMS_FINAL.py
-```
-
-Executable appears in `dist/` folder. (~250–300MB, includes Chromium)
-
----
-
-## Real-World Examples
-
-### Scenario: Incorrect DOB in CSV
-```
-Initial search returned 0 result(s).
-[RETRY 1/3] No results found with DOB. Retrying without DOB...
-[RETRY 2/3] Search without DOB returned 28 result(s).
-[RETRY SUCCESS] Found 28 result(s) without DOB.
-```
-
-### Scenario: Rate Limited During Processing
-```
-[ALERT] HTTP 429 Rate Limit hit! Waiting 5 seconds...
-[ALERT] HTTP 429 Rate Limit hit! Waiting 10 seconds...
-[SUCCESS] Rate limit cleared. Session recovered.
-```
-
-### Scenario: Portal Session Drop
-```
-Gateway detected at match 47. Re-authenticating...
-[SESSION RECOVERY] Portal session expired.
-Search restored. Continuing from match 47.
 ```
 
 ---
 
-## Notes
+## 3. Compile via PyInstaller
 
-- Built independently in one week (5th semester CS undergrad)
-- EAMS is a public California government portal — no private credentials required
-- Input CSVs with real patient data are not included (privacy)
-- Sample outputs use placeholder ADJ numbers
-- `.exe` build is ~250–300MB (includes Chromium browser)
+```bash
+pyinstaller --onefile ^
+  --add-data ".venv/Lib/site-packages/playwright/driver;playwright/driver" ^
+  --name EAMS_Automation_v1.0.2 ^
+  EAMS_refined_gemini_pro.py
+```
+
+### Linux/macOS Example
+
+```bash
+pyinstaller --onefile \
+  --add-data ".venv/Lib/site-packages/playwright/driver:playwright/driver" \
+  --name EAMS_Automation_v1.0.2 \
+  EAMS_refined_gemini_pro.py
+```
+
+> Adjust the `.venv` path if your environment uses a different directory name such as `env/` or a Conda environment.
+
+The compiled executable will appear in:
+
+```text
+dist/
+```
+
+Approximate size:
+
+```text
+250–300 MB
+```
+
+(includes Chromium)
 
 ---
 
-## Version History
+# Version History
 
-**v1.0.1** (Current)
-- Memory leak fixed — stable at 1000+ records
-- DOB retry logic — 3 automatic retries without DOB if initial search fails
-- Improved 429 handling with exponential backoff
-- Session recovery detection at three checkpoints per record
-- Better error messages and recovery logging
+## v1.0.2 (Current — it_15 Release)
 
-**v1.0.0**
-- Initial release
-- Basic search and extraction
-- Single retry attempt
+### Result Filter Engine
+
+- Added token-based fuzzy employer matching
+- Added CT date-range parsing
+
+### Dynamic CLI Prompts
+
+- Interactive filtering during multi-grid matches
+
+### Flexible Headers
+
+- Dynamic mapping of optional CSV parameters
+
+### Improved Logging
+
+- Displays active filters and runtime status
+
+### Distribution Polish
+
+- Official self-contained executable release
 
 ---
 
-## Download
+## v1.0.1
 
-Pre-built executable available on the **[Releases](https://github.com/M-zaid-bilal/EAMS_Automation/releases)** page.
+### Memory Fix
+
+- Added memory tracking
+- Added forced garbage collection
+
+### DOB Retry
+
+- Added 3-strike DOB fallback logic
+
+### Rate Limit Adjustments
+
+- Added exponential backoff handling
 
 ---
 
-## Questions?
+## v1.0.0
 
-This tool is designed to be self-explanatory. The `.exe` walks you through each step. If you hit anything unclear, open an issue or reach out directly.
+Initial release.
+
+Features included:
+
+- Standard search automation
+- Search grid traversal
+- ADJ extraction
+- File export structure
+
+---
+
+# Questions & Support
+
+This script runs entirely locally on your machine.
+
+For performance diagnostics, monitor the real-time memory logs displayed in the console:
+
+```text
+[MEMORY]
+```
+
+These outputs provide visibility into runtime memory consumption and automatic cleanup activity.
